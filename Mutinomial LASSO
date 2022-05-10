@@ -1,0 +1,78 @@
+COV = read.csv("cov_lab.csv")
+
+
+# Data handling 
+COV$CMD_RID <- as.factor(COV$CMD_RID)
+COV$CMD_SEX<-as.factor(COV$CMD_SEX)
+
+replace(COV,COV=="99999",NA)->COV
+table(is.na(COV))
+colSums(is.na(COV))  #LAB_BILIRUBIND, LAB_VITAMINB12, LAB_RGTP
+
+COV$LAB_BILIRUBIND = ifelse( !is.na(COV$LAB_BILIRUBIND), COV$LAB_BILIRUBIND, round(mean(COV$LAB_BILIRUBIND, na.rm=T), 2) )
+COV$LAB_VITAMINB12 = ifelse( !is.na(COV$LAB_VITAMINB12), COV$LAB_BILIRUBIND, round(mean(COV$LAB_VITAMINB12, na.rm=T), 2) )
+COV$LAB_RGTP = ifelse( !is.na(COV$LAB_RGTP), COV$LAB_BILIRUBIND, round(mean(COV$LAB_RGTP, na.rm=T), 2) )
+
+
+
+# normalization
+
+normal <- function(x){
+  return((x-min(x))/(max(x)-min(x)))
+}
+
+COV_norm <- sapply(COV[,4:40],normal)
+summary(COV_norm)
+
+COV_cate <- COV[,c(2,3)]
+
+COV_final = cbind(COV_cate,COV_norm)
+class(COV_final$status)
+COV$status = as.factor(COV$status)
+
+# data split
+ind = sample(1:nrow(COV_final),
+             nrow(COV_final)*0.7,
+             replace = F)
+
+train = COV_final[ind,]
+test = COV_final[-ind,]
+
+# Feature selection with multinomial Lasso
+set.seed(2220)
+str(COV_final)
+COV_final$status <-as.factor(COV_final$status)
+
+stratified_sample
+
+use_fpr_lasso <- within(train, status<-relevel(status, ref = "0"))
+lassod<- model.matrix(status~., use_fpr_lasso)[,-1]
+modelLasso10Cv<-cv.glmnet(lassod,use_fpr_lasso$status,alpha =1, family ="multinomial",
+                     type.measure = "deviance",parallel = T,
+                     nfolds = 10)
+
+plot(modelLasso10Cv)
+
+bestlambda=modelLasso10Cv$lambda.min
+bestlambda
+predict(modelLasso10Cv,newx = test[,1:38],s="lambda.min",type="class" )
+coef(modelLasso10Cv)
+
+predict()
+
+
+tiff(filename=paste("Lasso10CVfit", ".tiff", sep=""));
+plot(modelLasso10Cv, main="10-fold cross validation by Lasso \n\n");
+dev.off()
+write.table(as.matrix(modelLasso10Cv), file = paste("Lasso10CVfit", ".tsv", sep=""), sep = "\t")
+write.table(as.matrix(coef(modelLasso10Cv, s = "lambda.min")), file = "Lasso10CVfit_coef.tsv", sep = "\t")
+
+
+# save best feature Index
+featureIndex = as.matrix(coef(modelLasso10Cv, s = "lambda.min"))
+featureIndex = featureIndex[2:length(featureIndex), ]
+featureIndex = which(featureIndex!=0)
+write.table(featureIndex, file = "LassoBestFeatureIndex.tsv", sep = "\t")
+
+
+
