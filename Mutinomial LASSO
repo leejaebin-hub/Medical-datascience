@@ -76,3 +76,34 @@ write.table(featureIndex, file = "LassoBestFeatureIndex.tsv", sep = "\t")
 
 
 
+# RandomForest 
+ntree<-c(400,500,600)
+mtry<-c(1:6)
+param<-data.frame(n=ntree,m=mtry)
+param
+
+for(i in param$n){
+  cat('ntree=',i,'\n')
+  for(j in param$m){
+    cat('mtry')
+    model_cov<-randomForest(status~.,data = train, ntree=i,mtry=j)
+    print(model_cov)
+  }
+}
+
+model_cov
+
+model_rf <- randomForest(status~., data = train,ntree=600,mtry=6)
+
+pred_validation <- predict(model_rf, newdata = test, type = "response")
+pred_validation_num<-as.numeric(pred_validation)
+result_validation<-pROC::roc(df_validation$status, pred_validation_num)
+result_validation$auc
+result_validation$sensitivities
+
+confusionMatrix(pred_validation,test$status)
+pred_validation
+
+
+
+
