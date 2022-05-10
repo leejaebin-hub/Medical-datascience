@@ -1,0 +1,37 @@
+setwd("C:/Users/woqls/Desktop/covid-19/COVID-19_rawdata")
+getwd()
+
+library(woeBinning)
+library(dplyr)
+library(ggplot2)
+library(missForest)
+library(visdat)
+library(readxl)
+library(stringr)
+library(dplyr)
+library(outliers)
+library(purrr)
+library(tidyr)
+library(miceRanger)
+library(devtools)
+library(doParallel)
+
+# data load
+
+cyto_hand <-read.csv("cytokine_v5.csv")
+options("scipen" = 100)
+cyto_hand_2 <- cyto_hand[,-c(1)]
+
+
+outliers<-function(x){
+  UpperQ <- fivenum(x)[4]
+  LowerQ <- fivenum(x)[2]
+  IQR <- UpperQ - LowerQ
+  upoutlier <- UpperQ+IQR*1.5
+  lowoutlier<- UpperQ-IQR*1.5
+  y = ifelse(x > upoutlier| x < lowoutlier,NA,x) 
+  return(y)
+}
+
+cyto_imp<-data.frame(do.call(cbind, lapply(cyto_hand_2[, 1:191], outliers)))
+
