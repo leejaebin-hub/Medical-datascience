@@ -1,0 +1,331 @@
+from audioop import mul
+from cgi import parse_multipart
+from http.client import _DataType
+from inspect import Attribute
+from locale import normalize
+from os import ST_MANDLOCK
+from pyexpat import model
+from sre_constants import RANGE_UNI_IGNORE
+from sys import float_info
+from time import time
+from types import new_class
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sb
+import warnings
+from random import random
+from tkinter import N, Y
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import StratifiedKFold
+from sklearn.pipeline import make_pipeline
+from sklearn.ensemble import RandomForestClassifier 
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import cross_val_predict
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import KFold
+from sklearn.preprocessing import StandardScaler
+import statsmodels.api as sm
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix, plot_confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay
+import matplotlib.rcsetup as rcsetup
+from sklearn.linear_model import LogisticRegression
+from sklearn import metrics
+from sklearn.preprocessing import MinMaxScaler
+from imblearn.over_sampling import SMOTE
+import xgboost as xgb
+from xgboost import plot_importance
+from sklearn.metrics import confusion_matrix,accuracy_score,precision_score,recall_score
+from sklearn.metrics import confusion_matrix, f1_score, roc_auc_score,classification_report
+import warnings
+from sklearn.ensemble import VotingClassifier
+from itertools import cycle
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+
+
+# data preprocessing 
+COVID_lab1 = pd.read_csv("C:/Users/woqls/Desktop/COVID_19/COVID-19_rawdata/final_data/yr_1_lab.csv")
+COVID_lab2 = pd.read_csv("C:/Users/woqls/Desktop/COVID_19/COVID-19_rawdata/final_data/yr_2_lab.csv")
+COVID = pd.read_csv("C:/Users/woqls/Desktop/COVID_19/COVID-19_rawdata/final_data/bestfeature.csv")
+
+
+# Data EDA
+x1 = COVID.iloc[:,2:300]
+y1 = COVID.iloc[:,1]
+y1.value_counts()
+
+# correlation 
+import plotly.express as px
+import plotly.graph_objects as go
+warnings.filterwarnings('ignore')
+corr_x = x1.corr()
+corr_x = corr_x.apply(lambda x: round(x ,2))
+corr_x
+s = corr_x.unstack()
+corr_series = pd.DataFrame(s[s<1].sort_values(ascending=False), columns=['corr_x'])
+corr_series.style.background_gradient(cmap='viridis')
+plt.show()
+corr_series.to_csv('./corr_series.csv')
+
+# correlation heatmap
+plt.figure(figsize=(15,15))
+sb.heatmap(data = x1.corr(), annot=True, fmt = ".2f", linewidths=.5, cmap='Blues')
+plt.show()
+
+
+# data split 
+x_train, x_test, y_train, y_test = train_test_split(x1,
+                                                    y1,
+                                                    stratify=y1,
+                                                    test_size=0.3,
+                                                    shuffle=True,
+                                                    random_state=1004)
+
+print(x_train.shape, x_test.shape, y_train.shape, y_test.shape)
+y_test.value_counts()
+scaler = StandardScaler()
+x_train_scale = scaler.fit_transform(x_train)
+x_train_scale
+x_test_scale = scaler.transform(x_test)
+
+
+# Oversampling : SMOTE
+smote = SMOTE(random_state=0)
+x_train_over, y_train_over = smote.fit_resample(x_train_scale,y_train)
+print('SMOTE 적용 후 학습용 피처/레이블 데이터 세트:', x_train_over.shape, y_train_over.shape)
+print('SMOTE 적용 후 레이블 값 분포: \n', pd.Series(y_train_over).value_counts())
+
+# RandomForest 
+# RF - Hyperparameter option
+params = { 'n_estimators' : [10,25,50,75,100],
+           'max_depth' : [6, 8, 10, 12],
+           'min_samples_leaf' : [8, 12, 18],
+           'min_samples_split' : [8, 16, 20]
+            }
+
+# RandomForestClassifier-GridSearchCV
+rf_clf1 = RandomForestClassifier(random_state = 2, n_jobs = -1)
+grid_cv = GridSearchCV(rf_clf1, param_grid = params, cv = 10, n_jobs = -1)
+grid_cv.fit(x_train_over, y_train_over)
+print('최적 하이퍼 파라미터: ', grid_cv.best_params_)
+print('최고 예측 정확도: {:.4f}'.format(grid_cv.best_score_))
+
+
+# best parameter
+rf_clf1 = RandomForestClassifier(max_depth =  8, 
+                                 min_samples_leaf =8, 
+                                 min_samples_split = 8, 
+                                 n_estimators = 100,
+                                 random_state=2,
+                                 n_jobs=-1)
+rf_train = rf_clf1.fit(x_train_over, y_train_over)     # lab:8,8,8,50,  cytokine:8,8,8,100
+rf_pred = rf_clf1.predict(x_test_scale)
+print('예측 정확도: {:.4f}'.format(accuracy_score(y_test,rf_pred)))
+confusion_matrix(y_test,rf_pred)
+print(classification_report(y_test, rf_pred, target_names=['class 1','class 2','class 3']))
+f1_score(y_test, rf_pred, average='weighted')
+
+label = ['healthy_control','moderate','severe']
+Rf_cm = confusion_matrix(y_test, rf_pred)
+cm_display = ConfusionMatrixDisplay(Rf_cm,display_labels=label).plot(cmap='YlGnBu')
+plt.show()
+plt.rc('font', size=30)
+plt.rc('xtick', labelsize=25)
+plt.rc('ytick', labelsize=25)
+plt.show()
+
+ 
+ftrf_importances_values = rf_clf1.feature_importances_
+ftrf_importances = pd.Series(ftrf_importances_values, index = x_train.columns)
+ftrf_top20 = ftrf_importances.sort_values(ascending=False)[:20]
+ftrf_top20
+plt.figure(figsize=(3,3))
+plt.title('Top 20 RF_Feature Importances')
+sb.barplot(x=ftrf_top20, y=ftrf_top20.index,palette='coolwarm')
+plt.show()
+plt.rc('xtick', labelsize=20)
+plt.rc('ytick', labelsize=20)  # y축
+
+
+from xgboost import XGBClassifier
+new_xgb = XGBClassifier(n_estimator=400, learning_rate=0.1,max_depth=3,eta=0.1,random_state=2)
+
+new_xgb.fit(x_train_over,y_train_over,
+            early_stopping_rounds=500,
+            eval_metric='merror',
+            eval_set=[(x_test_scale,y_test)],
+            verbose=True)
+
+xg_pred = new_xgb.predict(x_test_scale)
+xg_proba = new_xgb.predict_proba(x_test_scale)[:, 1]
+
+accuracy_score(y_test,xg_pred)
+print(classification_report(y_test,xg_pred))
+print(confusion_matrix(y_test, xg_pred))
+f1_score(y_test, xg_pred, average='weighted')
+label = ['healthy_control','moderate','severe']
+xgb_cm = confusion_matrix(y_test, xg_pred)
+cm_display = ConfusionMatrixDisplay(xgb_cm,display_labels=label).plot(cmap='YlGnBu')
+plt.rc('font', size=30)
+plt.rc('xtick', labelsize=25)
+plt.rc('ytick', labelsize=25)
+plt.show()
+
+
+#Feature importance
+from xgboost import plot_importance
+ftxgb_importances_values = new_xgb.feature_importances_
+ftxgb_importances = pd.Series(ftxgb_importances_values, index = x_train.columns)
+ft_top20 = ftxgb_importances.sort_values(ascending=False)[:20]
+plt.figure(figsize=(3,3))
+plt.title('Top 20 XGB_Feature Importances')
+sb.barplot(x=ft_top20, y=ft_top20.index,palette='coolwarm')
+plt.show()
+plt.rc('xtick', labelsize=20)
+plt.rc('ytick', labelsize=20)  # y축
+
+
+
+
+# LightGBM  
+from lightgbm import LGBMClassifier
+import lightgbm as lgb
+from sklearn.model_selection import GridSearchCV
+from scipy.stats import randint
+from sklearn.utils.fixes import loguniform
+
+
+evals = [(x_test_scale, y_test)]
+lgbm_wrapper = LGBMClassifier(n_estimator = 500)
+
+lgbm_wrapper.fit(x_train_over, y_train_over, early_stopping_rounds=100, eval_metric="logloss", 
+                 eval_set=evals, verbose=True)
+lgbm_preds = lgbm_wrapper.predict(x_test_scale)
+
+accuracy_score(y_test,lgbm_preds)
+print(classification_report(y_test,lgbm_preds))
+print(confusion_matrix(y_test, lgbm_preds))
+f1_score(y_test, lgbm_preds, average='weighted')
+label = ['healthy_control','moderate','severe']
+lgbm_cm = confusion_matrix(y_test, lgbm_preds)
+cm_display = ConfusionMatrixDisplay(lgbm_cm,display_labels=label).plot(cmap='YlGnBu')
+plt.rc('font', size=30)
+plt.rc('xtick', labelsize=25)
+plt.rc('ytick', labelsize=25)
+plt.show()
+
+
+#Feature importance
+from xgboost import plot_importance
+ftlgbm_importances_values = lgbm_wrapper.feature_importances_
+ftlgbm_importances = pd.Series(ftlgbm_importances_values, index = x_train.columns)
+ft_top20 = ftlgbm_importances.sort_values(ascending=False)[:20]
+plt.figure(figsize=(3,3))
+plt.title('Top 20 LightGBM_Feature Importances')
+sb.barplot(x=ft_top20, y=ft_top20.index,palette='coolwarm')
+plt.show()
+plt.rc('ytick', labelsize=15)  # y축
+
+
+
+
+# Ensemble 
+# xgb_model, rf_clf1, lgbm_wrapper
+vo_clf = VotingClassifier(estimators=[('RF',rf_clf1),('xgb',new_xgb),('lgbm', lgbm_wrapper)],voting='soft')
+vo_clf.fit(x_train_over,y_train_over)
+En_pred = vo_clf.predict(x_test_scale)
+
+accuracy_score(y_test,En_pred)
+print(classification_report(y_test,En_pred))
+print(confusion_matrix(y_test, En_pred))
+print(accuracy_score(y_test, En_pred))
+f1_score(y_test, En_pred, average='weighted')
+en_cm = confusion_matrix(y_test, En_pred)
+cm_display = ConfusionMatrixDisplay(en_cm,display_labels=label).plot()
+plt.show()
+plt.rc('font', size=15)
+plt.rc('ytick', labelsize=20)
+
+
+
+
+# SHAP
+import shap
+shap.initjs()
+shap_values = shap.TreeExplainer(new_xgb).shap_values(x_test_scale, check_additivity=False)
+shap.summary_plot(shap_values, x_test_scale)
+
+
+# Multi-class auroc
+# Compute ROC curve and ROC area for each class
+def plot_roc_curve(ytest, ypred):
+    
+    n_classes = len(np.unique(ytest))
+    ytest = label_binarize(ytest, classes = np.arange(n_classes))
+    ypred = label_binarize(ypred, classes = np.arange(n_classes))
+    
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    for i in range(n_classes):
+        fpr[i], tpr[i],_ = roc_curve(ytest[:, i], ypred[:, i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+    # Compute micro - avarage roc curve    
+    fpr["micro"], tpr["micro"],_ = roc_curve(ytest.ravel(), ypred.ravel())
+    roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+    
+    # First aggregate all false positive rates
+    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
+    
+    # Then interpolate all ROC Curves at this point
+    mean_tpr = np.zeros_like(all_fpr)
+    for i in range(n_classes):
+        mean_tpr += np.interp(all_fpr, fpr[i], tpr[i])
+    
+    # Finally average it and compute auc
+    mean_tpr /= n_classes
+    
+    fpr["macro"] = all_fpr
+    tpr["macro"] = mean_tpr
+    roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+
+    # plot all ROC curves
+    plt.figure(figsize=(10,5))
+    
+    lw = 2
+    plt.plot(fpr['micro'],tpr['micro'],
+      label = "micro-average ROC curve (area = {0:0.2f})".format(roc_auc['micro']),
+      color = "deeppink", linestyle = ":", linewidth=4,)
+    
+    plt.plot(fpr["macro"], tpr["macro"],
+      label="macro-average ROC curve (area = {0:0.2f})".format(roc_auc["macro"]),
+      color="navy", linestyle=":", linewidth=4,)
+
+    colors = cycle(["aqua", "darkorange", "darkgreen"])
+    for i, color in zip(range(n_classes), colors):
+      plt.plot(fpr[i], tpr[i], color=color, lw=lw,
+          label="ROC curve of class {0} (area = {1:0.2f})".format(i, roc_auc[i]),)
+    
+    plt.plot([0, 1], [0, 1], "k--", lw=lw)
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("XGBoost model (ROC) curve")
+    plt.legend(fontsize=15)
+    
+    
+plot_roc_curve(y_test, xg_pred)
+plot_roc_curve(y_test, rf_pred)
+plot_roc_curve(y_test, lgbm_preds)
+plot_roc_curve(y_test, En_pred)
+
+plt.show()
+
+
+
